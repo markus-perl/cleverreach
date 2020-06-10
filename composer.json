@@ -1,5 +1,5 @@
 {
-    "name": "markuszeller/cleverreach",
+    "name": "markus-perl/cleverreach",
     "type": "library",
     "description": "CleverReach REST API v3 client",
     "keywords": [
@@ -7,9 +7,12 @@
         "cleverreach",
         "rest-api"
     ],
-    "homepage": "https://github.com/markuszeller/cleverreach",
+    "homepage": "https://github.com/markus-perl/cleverreach",
     "license": "MIT",
     "authors": [
+                {
+            "name": "Markus Perl"
+        },
         {
             "name": "Markus Zeller",
             "email": "git@markuszeller.com"
