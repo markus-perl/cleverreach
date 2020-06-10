@@ -4,10 +4,12 @@ namespace markuszeller\CleverReach;
 
 use Exception;
 use markuszeller\CleverReach\Http\AdapterInterface as HttpAdapter;
+use markuszeller\CleverReach\Model\Group;
 use markuszeller\CleverReach\Model\Mailing;
 use markuszeller\CleverReach\Model\MailingContent;
 use markuszeller\CleverReach\Model\MailingReceivers;
 use markuszeller\CleverReach\Model\MailingSettings;
+use markuszeller\CleverReach\Model\Receiver;
 
 class ApiManager implements ApiManagerInterface
 {
@@ -57,10 +59,10 @@ class ApiManager implements ApiManagerInterface
             'post',
             "/v3/groups.json/{$groupId}/receivers",
             [
-                'email'             => $email,
-                'registered'        => $now,
-                'activated'         => $active ? $now : 0,
-                'attributes'        => $attributes,
+                'email' => $email,
+                'registered' => $now,
+                'activated' => $active ? $now : 0,
+                'attributes' => $attributes,
                 'global_attributes' => $globalAttributes,
             ]
         );
@@ -76,6 +78,82 @@ class ApiManager implements ApiManagerInterface
         }
 
         return $this->adapter->action('get', "/v3/receivers.json/{$email}");
+    }
+
+    public function getGroups()
+    {
+        $data = $this->adapter->action('get', "/v3/groups.json/");
+        if (!empty($data['error'])) throw new Exception($data["error"]["message"], $data["error"]["code"]);
+
+        $groups = [];
+
+        foreach ($data as $entry) {
+            $group = new Group($entry['id']);
+            $group->exchangeArray($entry);
+            $groups[] = $group;
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @param Group $group
+     * @return Group\Receiver[]
+     * @throws Exception
+     */
+    public function getGroupReceivers(Group $group)
+    {
+        $page = 0;
+        $receivers = [];
+        $data = [];
+
+        while ($page == 0 || count($data) === 5000) {
+            $data = $this->adapter->action('get', "/v3/groups.json/{$group->getId()}/receivers?pagesize=5000&page={$page}");
+            if (!empty($data['error'])) throw new Exception($data["error"]["message"], $data["error"]["code"]);
+
+            foreach ($data as $entry) {
+                $receiver = new Group\Receiver($entry['id']);
+                $receiver->exchangeArray($entry);
+                $receivers[] = $receiver;
+            }
+
+            $page++;
+        }
+
+        return $receivers;
+    }
+
+    /**
+     * @param Group $group
+     * @param Group\Receiver[] $receivers
+     * @throws Exception
+     */
+    public function upsertGroupReceivers(Group $group, array $receivers)
+    {
+        $post = [];
+        foreach ($receivers as $receiver) {
+            $post[] = $receiver->toArray();
+        }
+
+        $data = $this->adapter->action('post', "/v3/groups.json/{$group->getId()}/receivers/upsert", $post);
+        if (!empty($data['error'])) throw new Exception($data["error"]["message"], $data["error"]["code"]);
+    }
+
+    /**
+     * @param Group $group
+     * @param Group\Receiver[] $receivers
+     * @throws Exception
+     */
+    public function deleteGroupReceivers(Group $group, array $receivers)
+    {
+        $post = [];
+        foreach ($receivers as $receiver) {
+            $post[] = $receiver->getEmail();
+        }
+
+        $data = $this->adapter->action('post', "/v3/groups.json/{$group->getId()}/receivers/delete", $post);
+        if (!empty($data['error'])) throw new Exception($data["error"]["message"], $data["error"]["code"]);
+
     }
 
     /**
@@ -99,11 +177,11 @@ class ApiManager implements ApiManagerInterface
             'post',
             "/v3/forms.json/{$formId}/send/activate",
             [
-                'email'   => $email,
+                'email' => $email,
                 'doidata' => array_merge(
                     [
-                        'user_ip'    => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
-                        'referer'    => $_SERVER['HTTP_REFERER'] ?? 'http://localhost',
+                        'user_ip' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
+                        'referer' => $_SERVER['HTTP_REFERER'] ?? 'http://localhost',
                         'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'FakeAgent/2.0 (Ubuntu/Linux)',
                     ],
                     $options
@@ -121,11 +199,11 @@ class ApiManager implements ApiManagerInterface
             'post',
             "/v3/forms.json/{$formId}/send/deactivate",
             [
-                'email'   => $email,
+                'email' => $email,
                 'doidata' => array_merge(
                     [
-                        'user_ip'    => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
-                        'referer'    => $_SERVER['HTTP_REFERER'] ?? 'http://localhost',
+                        'user_ip' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
+                        'referer' => $_SERVER['HTTP_REFERER'] ?? 'http://localhost',
                         'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'FakeAgent/2.0 (Ubuntu/Linux)',
                     ],
                     $options
@@ -184,7 +262,7 @@ class ApiManager implements ApiManagerInterface
      * @inheritdoc
      * @throws Exception
      */
-    public function getMailing(string $id) : Mailing
+    public function getMailing(string $id): Mailing
     {
         $data = $this->adapter->action('get', "/v3/mailings.json/{$id}");
         if (!empty($data['error'])) throw new Exception($data["error"]["message"], $data["error"]["code"]);
@@ -197,15 +275,15 @@ class ApiManager implements ApiManagerInterface
             ->setSenderEmail($data["sender_email"]);
 
         $content = new MailingContent();
-        if($data["is_html"]) $content->setHtml($data["body_html"]);
-        if($data["is_text"]) $content->setText($data["body_text"]);
-                if($data["is_html"] && $data["is_text"]) $content->setType(MailingContent::TYPE_HTML_AND_TEXT);
-        elseif($data["is_html"]) $content->setType(MailingContent::TYPE_HTML);
+        if ($data["is_html"]) $content->setHtml($data["body_html"]);
+        if ($data["is_text"]) $content->setText($data["body_text"]);
+        if ($data["is_html"] && $data["is_text"]) $content->setType(MailingContent::TYPE_HTML_AND_TEXT);
+        elseif ($data["is_html"]) $content->setType(MailingContent::TYPE_HTML);
         else $content->setType(MailingContent::TYPE_TEXT);
         $mailing->setContent($content);
 
         $receivers = new MailingReceivers();
-        if(!empty($data["mailing_groups"]["group_ids"])) $receivers->setGroups($data["mailing_groups"]["group_ids"]);
+        if (!empty($data["mailing_groups"]["group_ids"])) $receivers->setGroups($data["mailing_groups"]["group_ids"]);
         $mailing->setReceivers($receivers);
 
         $settings = new MailingSettings();
